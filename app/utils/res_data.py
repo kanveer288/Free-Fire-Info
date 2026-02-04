@@ -7,11 +7,14 @@ from Crypto.Cipher import AES
 import base64
 from pymongo import MongoClient
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Constants
 MAIN_KEY = base64.b64decode('WWcmdGMlREV1aDYlWmNeOA==')
 MAIN_IV = base64.b64decode('Nm95WkRyMjJFM3ljaGpNJQ==')
-
+RELEASE_VERSION = "OB52"
 
 # Region to flag mapping
 REGION_FLAGS = {
@@ -76,7 +79,7 @@ PRIME_ICONS = {
 # MongoDB connection
 MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI)
-db = client.info_xpert
+db = client.info
 tokens_collection = db.tokens
 
 async def json_to_proto(json_data: str, proto_message: message.Message) -> bytes:
@@ -104,7 +107,7 @@ def decode_protobuf(encoded_data: bytes, message_type: message.Message) -> messa
 
 def get_jwt_tokens():
     """Get JWT tokens from database for allowed regions"""
-    allowed_regions = {"bd", "pk", "ind", "us"}
+    allowed_regions = {"bd", "pk", "ind", "us", "na", "sg", "ru", "br", "vn", "tw", "id", "th", "me", "eu"}
     tokens_cursor = tokens_collection.find({"region": {"$in": list(allowed_regions)}})
     
     tokens = {}
@@ -113,6 +116,7 @@ def get_jwt_tokens():
         token = doc.get("token")
         if region and token:
             tokens[region] = token
+            print(f"Loaded token for region: {region}") # Debug print
     return tokens
 
 def get_url(region):
@@ -121,22 +125,20 @@ def get_url(region):
     elif region in {"br", "us", "sac", "na"}:
         return "https://client.us.freefiremobile.com"
     else:
-        return "https://clientbp.ggblueshark.com"
+        return "https://clientbp.common.ggbluefox.com"
 
 def build_headers(token):
     return {
-        'User-Agent': "Dalvik/2.1.0 (Linux; U; Android 9; ASUS_Z01QD Build/PI",
+        'User-Agent': "Dalvik/2.1.0 (Linux; U; Android 13; A063 Build/TKQ1.221220.001)",
         'Connection': "Keep-Alive",
         'Accept-Encoding': "gzip",
-        'Content-Type': "application/x-www-form-urlencoded",
+        'Content-Type': "application/octet-stream",
         'Expect': "100-continue",
         'Authorization': f"Bearer {token}",
-        'X-Unity-Version': "2018.4.11f1",
+        'X-Unity-Version': "2022.3.47f1",
         'X-GA': "v1 1",
-        'ReleaseVersion': "OB52",
+        'ReleaseVersion': RELEASE_VERSION
     }
-
-   
 
 def format_response_data(data, region):
     """Format response data to include region flags and prime icons"""
@@ -175,6 +177,7 @@ async def GetAccountInformation(ID, UNKNOWN_ID, endpoint):
         # Get tokens from database
         tokens = get_jwt_tokens()
         if not tokens:
+            print("No tokens found in database!")
             return {
                 "error": "No tokens found in database",
                 "message": "Service temporarily unavailable"
@@ -182,7 +185,7 @@ async def GetAccountInformation(ID, UNKNOWN_ID, endpoint):
 
         # Try regions in priority order
         # Try regions in priority order; ensure we include 'us' so tokens in DB are used
-        region_priority = ["bd", "pk", "ind", "us", "na"]
+        region_priority = ["bd", "pk", "ind", "us", "na", "sg", "ru", "br", "vn", "tw", "id", "th", "me", "eu"]
         successful_region = None
         
         for region in region_priority:
@@ -191,6 +194,7 @@ async def GetAccountInformation(ID, UNKNOWN_ID, endpoint):
                 continue
                 
             try:
+                print(f"Trying region: {region} with token ending in ...{token[-10:] if len(token)>10 else token}")
                 # Prepare request data
                 server_url = get_url(region)
                 headers = build_headers(token)
@@ -198,8 +202,9 @@ async def GetAccountInformation(ID, UNKNOWN_ID, endpoint):
                 payload = aes_cbc_encrypt(MAIN_KEY, MAIN_IV, encoded_result)
                 
                 # Make API request
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(verify=False) as client:
                     response = await client.post(server_url + endpoint, data=payload, headers=headers)
+                    print(f"Region {region} Response Status: {response.status_code}")
                     response.raise_for_status()
                     
                     # Decode response
@@ -208,7 +213,9 @@ async def GetAccountInformation(ID, UNKNOWN_ID, endpoint):
                     if hasattr(message, 'developer_info'):
                         # Create developer info object
                         dev_info = personalInfo_pb2.DeveloperInfo()
-                        dev_info.developer_name = "Sukh Daku"  
+                        dev_info.developer_name = "Sukh Daku !"  
+                        dev_info.portfolio = "https://sukhdaku.qzz.io/"
+                        dev_info.github = "@sukhdaku"
                         dev_info.signature = "Sukh Daku — Always learning 💻 Full-stack Developer "
                         dev_info.do_not_remove_credits = True
                         
@@ -221,6 +228,9 @@ async def GetAccountInformation(ID, UNKNOWN_ID, endpoint):
                     return format_response_data(json_data, successful_region)
                     
             except Exception as e:
+                print(f"Region {region} failed with error: {str(e)}")
+                if hasattr(e, 'response') and e.response is not None:
+                     print(f"Server response content: {e.response.text}")
                 # Continue to next region if current one fails
                 continue
         
