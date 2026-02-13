@@ -206,15 +206,105 @@ def build_headers(token):
         'ReleaseVersion': RELEASE_VERSION
     }
 
+from app.proto import output_pb2, personalInfo_pb2
+import httpx
+import json
+import time
+from google.protobuf import json_format, message
+from Crypto.Cipher import AES
+import base64
+from pymongo import MongoClient
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Constants
+MAIN_KEY = base64.b64decode('WWcmdGMlREV1aDYlWmNeOA==')
+MAIN_IV = base64.b64decode('Nm95WkRyMjJFM3ljaGpNJQ==')
+RELEASE_VERSION = "OB52"
+
+
+# Prime level to Discord emoji mapping
+PRIME_ICONS = {
+    1: "<:prime_1:1432065617246294208>",
+    2: "<:prime_2:1432065635608690778>",
+    3: "<:prime_3:1432065651530272928>",
+    4: "<:prime_4:1432065675521691758>",
+    5: "<:prime_5:1432065689597771887>",
+    6: "<:prime_6:1432065707863965758>",
+    7: "<:prime_7:1432065724184264704>",
+    8: "<:prime_8:1432065741980565594>"
+}
+
+# MongoDB connection
+MONGO_URI = os.getenv("MONGO_URI")
+client = MongoClient(MONGO_URI)
+db = client.info
+tokens_collection = db.tokens
+
+async def json_to_proto(json_data: str, proto_message: message.Message) -> bytes:
+    """Convert JSON data to protobuf bytes"""
+    json_format.ParseDict(json.loads(json_data), proto_message)
+    return proto_message.SerializeToString()
+
+def pad(text: bytes) -> bytes:
+    """Add PKCS7 padding to text"""
+    padding_length = AES.block_size - (len(text) % AES.block_size)
+    padding = bytes([padding_length] * padding_length)
+    return text + padding
+
+def aes_cbc_encrypt(key: bytes, iv: bytes, plaintext: bytes) -> bytes:
+    """Encrypt data using AES-CBC"""
+    aes = AES.new(key, AES.MODE_CBC, iv)
+    padded_plaintext = pad(plaintext)
+    return aes.encrypt(padded_plaintext)
+
+def decode_protobuf(encoded_data: bytes, message_type: message.Message) -> message.Message:
+    """Decode protobuf data"""
+    message_instance = message_type()
+    message_instance.ParseFromString(encoded_data)
+    return message_instance
+
+def get_jwt_tokens():
+    """Get JWT tokens from database for allowed regions"""
+    allowed_regions = {"bd", "pk", "ind", "us", "na", "sg", "ru", "br", "vn", "tw", "id", "th", "me", "eu"}
+    tokens_cursor = tokens_collection.find({"region": {"$in": list(allowed_regions)}})
+    
+    tokens = {}
+    for doc in tokens_cursor:
+        region = doc.get("region")
+        token = doc.get("token")
+        if region and token:
+            tokens[region] = token
+            print(f"Loaded token for region: {region}") # Debug print
+    return tokens
+
+def get_url(region):
+    if region == "ind":
+        return "https://client.ind.freefiremobile.com"
+    elif region in {"br", "us", "sac", "na"}:
+        return "https://client.us.freefiremobile.com"
+    else:
+        return "https://clientbp.common.ggbluefox.com"
+
+def build_headers(token):
+    return {
+        'User-Agent': "Dalvik/2.1.0 (Linux; U; Android 13; A063 Build/TKQ1.221220.001)",
+        'Connection': "Keep-Alive",
+        'Accept-Encoding': "gzip",
+        'Content-Type': "application/octet-stream",
+        'Expect': "100-continue",
+        'Authorization': f"Bearer {token}",
+        'X-Unity-Version': "2022.3.47f1",
+        'X-GA': "v1 1",
+        'ReleaseVersion': RELEASE_VERSION
+    }
+
 def format_response_data(data, region):
     """Format response data to include region flags and prime icons"""
     if isinstance(data, dict):
-        # Format region with flag
-        if 'region' in data:
-            region_code = data['region'].lower()
-            flag = REGION_FLAGS.get(region_code, "")
-            if flag:
-                data['region'] = f"{data['region']} {flag}"
+      
         
         # Format prime level with icon
         if 'primeLevel' in data and isinstance(data['primeLevel'], dict):
@@ -230,6 +320,9 @@ def format_response_data(data, region):
                 data[key] = [format_response_data(item, region) if isinstance(item, dict) else item for item in value]
     
     return data
+
+   
+
 
 async def GetAccountInformation(ID, UNKNOWN_ID, endpoint):
     """Get account information from Free Fire API"""
@@ -311,3 +404,4 @@ async def GetAccountInformation(ID, UNKNOWN_ID, endpoint):
             "error": "Failed to get account info",
             "reason": str(e)
         }
+
