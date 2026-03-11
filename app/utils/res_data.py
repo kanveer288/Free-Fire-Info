@@ -204,11 +204,13 @@ async def GetAccountInformation(ID, UNKNOWN_ID, endpoint):
                     message = decode_protobuf(response.content, personalInfo_pb2.PersonalInfoByLokesh)
                     
                     if hasattr(message, 'developer_info'):
-                        # Create developer info object
                         dev_info = personalInfo_pb2.DeveloperInfo()
-                        dev_info.developer_name = "Sukh Daku"  
-                        dev_info.signature = "Sukh — Always learning 💻 Full-stack Developer "
+                        dev_info.developer_name = "Sukh Daku !"  
+                        dev_info.portfolio = "https://sukhdaku.qzz.io/"
+                        dev_info.github = "@sukhdaku"
+                        dev_info.signature = "Sukh Daku — Always learning 💻 Full-stack Developer "
                         dev_info.do_not_remove_credits = True
+                        message.developer_info.CopyFrom(dev_info)
                         
                         # Assign to message
                         message.developer_info.CopyFrom(dev_info)
