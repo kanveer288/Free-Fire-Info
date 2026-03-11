@@ -11,7 +11,7 @@ import os
 # Constants
 MAIN_KEY = base64.b64decode('WWcmdGMlREV1aDYlWmNeOA==')
 MAIN_IV = base64.b64decode('Nm95WkRyMjJFM3ljaGpNJQ==')
-RELEASE_VERSION = "OB51"
+RELEASE_VERSION = "OB52"
 
 # Region to flag mapping
 REGION_FLAGS = {
