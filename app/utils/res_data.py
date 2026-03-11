@@ -76,7 +76,7 @@ PRIME_ICONS = {
 # MongoDB connection
 MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI)
-db = client.infotoken
+db = client.info
 tokens_collection = db.tokens
 
 async def json_to_proto(json_data: str, proto_message: message.Message) -> bytes:
